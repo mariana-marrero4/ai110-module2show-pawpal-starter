@@ -127,7 +127,6 @@ class Pet:
     """Dataclass representing a pet"""
     name: str
     pet_type: str
-    breed: str
     age: int
     tasks: List[Task] = field(default_factory=list)
     
@@ -191,10 +190,6 @@ class Pet:
         if not isinstance(self.pet_type, str) or not self.pet_type:
             raise ValueError("Pet type cannot be empty")
         
-        # Validate breed
-        if not isinstance(self.breed, str) or not self.breed:
-            raise ValueError("Breed cannot be empty")
-        
         # Validate age
         if not isinstance(self.age, int) or self.age < 0:
             raise ValueError(f"Invalid age {self.age}. Age must be a non-negative integer.")
@@ -216,19 +211,18 @@ class Owner:
             
         Raises:
             TypeError: If pet is not a Pet instance
-            ValueError: If a pet with the same name, type, breed, and age already exists
+            ValueError: If a pet with the same name, type, and age already exists
         """
         if not isinstance(pet, Pet):
             raise TypeError(f"Expected Pet instance, got {type(pet)}")
         
-        # Check if pet with same attributes (name, type, breed, age) already exists
+        # Check if pet with same attributes (name, type, age) already exists
         for existing_pet in self.pets:
             if (existing_pet.name.lower() == pet.name.lower() and
                 existing_pet.pet_type.lower() == pet.pet_type.lower() and
-                existing_pet.breed.lower() == pet.breed.lower() and
                 existing_pet.age == pet.age):
                 raise ValueError(
-                    f"Pet '{pet.name}' ({pet.pet_type}, {pet.breed}, {pet.age} years old) already exists"
+                    f"Pet '{pet.name}' ({pet.pet_type}, {pet.age} years old) already exists"
                 )
         
         self.pets.append(pet)
