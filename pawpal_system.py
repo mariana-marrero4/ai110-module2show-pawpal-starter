@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Tuple
+from datetime import datetime, timedelta
 import uuid
 
 
@@ -13,7 +13,9 @@ class Task:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))  # Auto-generated unique ID
     prefered_time: Optional[str] = None  # "morning" or "afternoon"
     frequency: str = "daily"    # "daily", "weekly", or "monthly"
-    completed: bool = False     # completion status
+    status: str = "pending"     # "pending", "in-progress", or "completed"
+    due_date: datetime = field(default_factory=datetime.now)  # When task is due
+    is_recurring_copy: bool = False  # Flag to track if this is an auto-generated recurring copy
     
     def update(self, name: str = None, duration: int = None, priority: int = None, prefered_time: str = None, frequency: str = None) -> bool:
         """Update task details with validation
@@ -86,9 +88,70 @@ class Task:
         
         return self.duration <= available_time
     
-    def mark_complete(self) -> None:
-        """Mark task as completed"""
-        self.completed = True
+    def update_status(self, new_status: str) -> Optional['Task']:
+        """Update task status and handle recurring task creation
+        
+        When status is changed to "completed", automatically creates a new Task instance
+        for the next occurrence if the task is recurring.
+        
+        Args:
+            new_status (str): New status - "pending", "in-progress", or "completed"
+            
+        Returns:
+            Task: New Task instance for next occurrence if recurring + completed, None otherwise
+            
+        Raises:
+            ValueError: If new_status is invalid
+        """
+        # Validate new status
+        new_status_lower = new_status.lower()
+        if new_status_lower not in ["pending", "in-progress", "completed"]:
+            raise ValueError(f"Invalid status '{new_status}'. Must be 'pending', 'in-progress', or 'completed'.")
+        
+        self.status = new_status_lower
+        
+        # If task is marked as completed and is recurring, create next occurrence
+        if new_status_lower == "completed" and self.frequency in ["daily", "weekly", "monthly"]:
+            return self.get_next_occurrence()
+        
+        return None
+    
+    def get_next_occurrence(self) -> 'Task':
+        """Calculate next occurrence date and create new Task instance
+        
+        Uses Python's timedelta to calculate the next due date based on frequency:
+        - Daily: due_date + 1 day
+        - Weekly: due_date + 7 days
+        - Monthly: due_date + 30 days (approximate)
+        
+        Returns:
+            Task: New Task instance with same properties but new due date and task_id
+            
+        Raises:
+            ValueError: If frequency is not "daily", "weekly", or "monthly"
+        """
+        if self.frequency == "daily":
+            next_due = self.due_date + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_due = self.due_date + timedelta(weeks=1)
+        elif self.frequency == "monthly":
+            next_due = self.due_date + timedelta(days=30)
+        else:
+            raise ValueError(f"Cannot calculate next occurrence for frequency: {self.frequency}")
+        
+        # Create new Task instance for next occurrence
+        next_task = Task(
+            task_name=self.task_name,
+            duration=self.duration,
+            priority=self.priority,
+            prefered_time=self.prefered_time,
+            frequency=self.frequency,
+            due_date=next_due,
+            is_recurring_copy=True,
+            task_id=str(uuid.uuid4())  # New unique ID for the copy
+        )
+        
+        return next_task
     
     def __post_init__(self):
         """Post-initialization validation for Task dataclass"""
@@ -120,6 +183,14 @@ class Task:
         if frequency_lower not in ["daily", "weekly", "monthly"]:
             raise ValueError(f"Invalid frequency '{self.frequency}'. Must be 'daily', 'weekly', or 'monthly'.")
         self.frequency = frequency_lower
+        
+        # Validate status (only "pending", "in-progress", or "completed")
+        if not isinstance(self.status, str) or not self.status:
+            raise ValueError("Status cannot be empty")
+        status_lower = self.status.lower()
+        if status_lower not in ["pending", "in-progress", "completed"]:
+            raise ValueError(f"Invalid status '{self.status}'. Must be 'pending', 'in-progress', or 'completed'.")
+        self.status = status_lower
 
 
 @dataclass
@@ -171,6 +242,41 @@ class Pet:
                 self.tasks.pop(i)
                 return True
         return False
+    
+    def update_task_status(self, task_id: str, new_status: str) -> Optional[Task]:
+        """Update task status and handle recurring task creation
+        
+        If the task is marked as "completed" and is recurring, automatically creates a new 
+        Task instance for the next occurrence and adds it to the pet's task list.
+        
+        Args:
+            task_id (str): ID of the task to update
+            new_status (str): New status - "pending", "in-progress", or "completed"
+            
+        Returns:
+            Task: The newly created recurring task if applicable, None otherwise
+            
+        Raises:
+            ValueError: If task with task_id not found or status is invalid
+        """
+        task = None
+        for t in self.tasks:
+            if t.task_id == task_id:
+                task = t
+                break
+        
+        if task is None:
+            raise ValueError(f"Task with ID {task_id} not found")
+        
+        # Update status and get next occurrence if recurring and completed
+        next_task = task.update_status(new_status)
+        
+        # If recurring and completed, add the next occurrence automatically
+        if next_task:
+            self.add_task(next_task)
+            return next_task
+        
+        return None
     
     def get_total_duration(self) -> int:
         """Calculate total duration of all tasks
@@ -302,7 +408,7 @@ class Scheduler:
         """Filter tasks based on constraints
         
         Only returns tasks that:
-        - Are not already completed
+        - Are not already completed (status != "completed")
         - Can fit in available time
         
         Returns:
@@ -310,7 +416,7 @@ class Scheduler:
         """
         feasible_tasks = []
         for task in self.pet.get_tasks():
-            if not task.completed and task.is_feasible(self.available_time):
+            if task.status != "completed" and task.is_feasible(self.available_time):
                 feasible_tasks.append(task)
         return feasible_tasks
     
@@ -348,6 +454,67 @@ class Scheduler:
         
         return sorted(tasks, key=lambda t: t.duration, reverse=not ascending)
     
+    def filter_by_status(self, status: str, tasks: List[Task] = None) -> List[Task]:
+        """Filter tasks by completion status
+        
+        Algorithmically filters tasks by their current status state:
+        - "pending": Tasks waiting to be started
+        - "in-progress": Tasks currently being worked on
+        - "completed": Tasks that have been finished
+        
+        Args:
+            status (str): Status to filter by - "pending", "in-progress", or "completed"
+            tasks (List[Task], optional): Tasks to filter. If None, uses all tasks from pet.
+        
+        Returns:
+            List[Task]: Tasks matching the specified status
+            
+        Raises:
+            ValueError: If status is not valid
+        """
+        valid_statuses = ["pending", "in-progress", "completed"]
+        if status.lower() not in valid_statuses:
+            raise ValueError(f"Invalid status '{status}'. Must be one of {valid_statuses}")
+        
+        if tasks is None:
+            tasks = self.pet.get_tasks()
+        
+        status_lower = status.lower()
+        return [t for t in tasks if t.status == status_lower]
+    
+    def filter_by_time_slot(self, slot: str, tasks: List[Task] = None) -> List[Task]:
+        """Filter tasks by preferred time slot
+        
+        Algorithmically filters tasks to show only those preferred for a specific time:
+        - "morning": Tasks best done in the morning
+        - "afternoon": Tasks best done in the afternoon
+        - "flexible": Tasks with no time preference
+        
+        Args:
+            slot (str): Time slot to filter - "morning", "afternoon", or "flexible"
+            tasks (List[Task], optional): Tasks to filter. If None, uses all tasks from pet.
+        
+        Returns:
+            List[Task]: Tasks matching the specified time slot preference
+            
+        Raises:
+            ValueError: If slot is not valid
+        """
+        valid_slots = ["morning", "afternoon", "flexible"]
+        if slot.lower() not in valid_slots:
+            raise ValueError(f"Invalid slot '{slot}'. Must be one of {valid_slots}")
+        
+        if tasks is None:
+            tasks = self.pet.get_tasks()
+        
+        slot_lower = slot.lower()
+        if slot_lower == "flexible":
+            # Flexible means no preference (prefered_time is None)
+            return [t for t in tasks if t.prefered_time is None]
+        else:
+            # Morning or afternoon
+            return [t for t in tasks if t.prefered_time == slot_lower]
+    
     def get_recurring_tasks(self, frequency: str = "daily") -> List[Task]:
         """Get recurring tasks that are not completed
         
@@ -355,10 +522,10 @@ class Scheduler:
             frequency (str): "daily", "weekly", or "monthly". Default: "daily"
         
         Returns:
-            List[Task]: Tasks with specified frequency that haven't been completed
+            List[Task]: Tasks with specified frequency that are not completed
         """
         return [t for t in self.pet.get_tasks() 
-                if t.frequency == frequency and not t.completed]
+                if t.frequency == frequency and t.status != "completed"]
     
     def detect_conflicts(self) -> List[str]:
         """Detect scheduling conflicts in the current plan
@@ -463,7 +630,7 @@ class Scheduler:
                 explanation += "\nTasks that do NOT fit:\n"
                 for task in all_tasks:
                     explanation += f"  • {task.task_name} ({task.duration} min, priority {task.priority}) - "
-                    if task.completed:
+                    if task.status == "completed":
                         explanation += "already completed\n"
                     elif task.duration > self.available_time:
                         explanation += f"exceeds available time ({task.duration} > {self.available_time})\n"
@@ -504,16 +671,16 @@ class Scheduler:
                 explanation += "lower priority than scheduled tasks\n"
         
         all_tasks = self.pet.get_tasks()
-        infeasible = [t for t in all_tasks if not t.is_feasible(self.available_time) and not t.completed]
+        infeasible = [t for t in all_tasks if not t.is_feasible(self.available_time) and t.status != "completed"]
         if infeasible:
             explanation += f"\n⛔ Too long to fit ({len(infeasible)}):\n"
             for task in infeasible:
                 explanation += f"  • {task.task_name} ({task.duration} min) - exceeds available time\n"
         
         # Completed tasks
-        completed = [t for t in all_tasks if t.completed]
+        completed = [t for t in all_tasks if t.status == "completed"]
         if completed:
-            explanation += f"\n✔️ Already Completed ({len(completed)}):\n"
+            explanation += f"\n✔️ Completed ({len(completed)}):\n"
             for task in completed:
                 explanation += f"  • {task.task_name}\n"
         

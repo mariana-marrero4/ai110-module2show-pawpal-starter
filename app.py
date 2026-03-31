@@ -197,6 +197,8 @@ with st.expander("➕ Add a New Pet", expanded=False):
             except ValueError as e:
                 st.error(f"Cannot add pet: {e}")
 
+st.divider()
+
 st.markdown(f"### Tasks for {st.session_state.current_pet.name}")
 st.caption("Add tasks to your pet's care plan. These persist in the session.")
 
@@ -245,7 +247,8 @@ if st.session_state.current_pet.tasks:
             "Duration (min)": t.duration, 
             "Priority": ["High", "Medium", "Low"][t.priority-1],
             "Preferred Time": t.prefered_time.capitalize() if t.prefered_time else "Flexible",
-            "Frequency": t.frequency.capitalize()
+            "Frequency": t.frequency.capitalize(),
+            "Status": t.status.capitalize()
         }
         for t in st.session_state.current_pet.tasks
     ]
@@ -255,8 +258,6 @@ else:
     st.info(f"No tasks yet for {st.session_state.current_pet.name}. Add one above.")
 
 # Edit Task Section
-st.divider()
-
 with st.expander("✏️ Edit Task", expanded=False):
     st.caption("Select a task to edit, modify the information, and confirm the update.")
 
@@ -353,6 +354,44 @@ with st.expander("✏️ Edit Task", expanded=False):
 
     else:
         st.info("No tasks to edit. Add some tasks first!")
+
+# Update Task Status Section
+with st.expander("📊 Update Task Status", expanded=False):
+    st.caption("Change the status of a task (Pending → In-Progress → Completed). When completed, recurring tasks auto-create the next occurrence.")
+
+    if st.session_state.current_pet.tasks:
+        status_task_options = [f"{i+1}. {t.task_name} ({t.status.capitalize()})" for i, t in enumerate(st.session_state.current_pet.tasks)]
+        status_task_idx = st.selectbox("Select a task to update status:", range(len(st.session_state.current_pet.tasks)), format_func=lambda i: status_task_options[i], key="status_task_select")
+        
+        if status_task_idx is not None:
+            status_task = st.session_state.current_pet.tasks[status_task_idx]
+            
+            st.info(f"**Task:** {status_task.task_name} | **Current Status:** {status_task.status.capitalize()}")
+            
+            new_status = st.selectbox(
+                "New Status",
+                ["pending", "in-progress", "completed"],
+                index=["pending", "in-progress", "completed"].index(status_task.status),
+                format_func=lambda s: s.capitalize(),
+                key=f"new_status_{status_task_idx}"
+            )
+            
+            if st.button("✅ Update Status", key=f"update_status_btn_{status_task_idx}"):
+                try:
+                    next_task = st.session_state.current_pet.update_task_status(status_task.task_id, new_status)
+                    
+                    if new_status == "completed" and next_task:
+                        st.balloons()
+                        st.success(f"✅ Task marked as completed! Next occurrence created automatically.", icon="✨")
+                        st.info(f"📅 New task '{next_task.task_name}' scheduled for {next_task.due_date.strftime('%Y-%m-%d')}")
+                    else:
+                        st.success(f"✅ Task status updated to '{new_status.capitalize()}'!")
+                    
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error updating status: {e}")
+    else:
+        st.info("No tasks to update. Add some tasks first!")
 
 st.divider()
 

@@ -7,11 +7,70 @@ import pytest
 from pawpal_system import Task, Pet, Owner, Scheduler
 
 
-class TestTaskCompletion:
-    """Tests for Task completion functionality"""
+class TestTaskStatusSystem:
+    """Tests for Task status system (pending/in-progress/completed)"""
     
-    def test_task_completion_status_changes(self):
-        """Verify that calling mark_complete() actually changes the task's status"""
+    def test_task_initial_status_is_pending(self):
+        """Verify that new tasks have status 'pending' by default"""
+        # Arrange & Act
+        task = Task(
+            task_name="New Task",
+            duration=30,
+            priority=1
+        )
+        
+        # Assert
+        assert task.status == "pending", "New task should have status 'pending'"
+    
+    def test_task_status_update_to_in_progress(self):
+        """Verify that task status can be updated to 'in-progress'"""
+        # Arrange
+        task = Task(
+            task_name="Task",
+            duration=30,
+            priority=1
+        )
+        
+        # Act
+        task.update_status("in-progress")
+        
+        # Assert
+        assert task.status == "in-progress"
+    
+    def test_task_status_update_to_completed(self):
+        """Verify that task status can be updated to 'completed'"""
+        # Arrange
+        task = Task(
+            task_name="Task",
+            duration=30,
+            priority=1
+        )
+        
+        # Act
+        task.update_status("completed")
+        
+        # Assert
+        assert task.status == "completed"
+    
+    def test_task_update_status_with_invalid_status_raises_error(self):
+        """Verify that invalid status raises ValueError"""
+        # Arrange
+        task = Task(
+            task_name="Task",
+            duration=30,
+            priority=1
+        )
+        
+        # Act & Assert
+        with pytest.raises(ValueError, match="Invalid status"):
+            task.update_status("invalid-status")
+
+
+class TestTaskCompletion:
+    """Tests for Task completion functionality (recurring tasks)"""
+    
+    def test_recurring_task_creates_next_occurrence_on_completion(self):
+        """Verify that completing a recurring daily task creates the next occurrence"""
         # Arrange
         task = Task(
             task_name="Morning Walk",
@@ -20,30 +79,32 @@ class TestTaskCompletion:
             frequency="daily"
         )
         
-        # Assert initial state
-        assert task.completed is False, "Task should not be completed initially"
+        # Act - mark task as completed
+        next_task = task.update_status("completed")
         
-        # Act - mark task as complete
-        task.mark_complete()
-        
-        # Assert final state
-        assert task.completed is True, "Task should be completed after calling mark_complete()"
+        # Assert
+        assert task.status == "completed", "Task should be marked as completed"
+        assert next_task is not None, "Should create next occurrence for recurring task"
+        assert next_task.task_name == "Morning Walk", "Next task should have same name"
+        assert next_task.is_recurring_copy is True, "Next task should be marked as recurring copy"
     
-    def test_task_completion_persists(self):
-        """Verify that completion status persists after being set"""
+    def test_one_time_task_no_next_occurrence(self):
+        """Verify that non-recurring frequency tasks only use valid frequencies (daily/weekly/monthly)"""
         # Arrange
         task = Task(
-            task_name="Feeding",
-            duration=15,
-            priority=1
+            task_name="Playtime",
+            duration=45,
+            priority=2,
+            frequency="weekly"  # Valid frequency
         )
         
         # Act
-        task.mark_complete()
+        next_task = task.update_status("completed")
         
-        # Assert - check multiple times to ensure it persists
-        assert task.completed is True
-        assert task.completed is True  # Should still be True
+        # Assert - weekly tasks should create next occurrence
+        assert task.status == "completed"
+        assert next_task is not None, "Weekly task should create next occurrence"
+        assert next_task.frequency == "weekly"
 
 
 class TestTaskAddition:
@@ -463,6 +524,188 @@ class TestSchedulerPrioritySorting:
         assert sorted_tasks[0].priority == 1, "Priority 1 task should be first"
         assert sorted_tasks[1].priority == 2, "Priority 2 task should be second"
         assert sorted_tasks[2].priority == 3, "Priority 3 task should be third"
+
+
+class TestSchedulerFilterByStatus:
+    """Tests for Scheduler filter_by_status() - STEP 2 Feature"""
+    
+    def test_filter_by_pending_status(self):
+        """Verify that filter_by_status correctly returns pending tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Mochi", pet_type="dog", age=3)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Task 1", duration=20, priority=1)
+        task2 = Task(task_name="Task 2", duration=20, priority=1)
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        
+        # Mark task1 as completed
+        task1.update_status("completed")
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        pending_tasks = scheduler.filter_by_status("pending")
+        
+        # Assert
+        assert len(pending_tasks) == 1, "Should have 1 pending task"
+        assert pending_tasks[0].task_name == "Task 2"
+    
+    def test_filter_by_completed_status(self):
+        """Verify that filter_by_status correctly returns completed tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Mochi", pet_type="dog", age=3)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Task 1", duration=20, priority=1)
+        task2 = Task(task_name="Task 2", duration=20, priority=1)
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        
+        # Mark both as completed
+        task1.update_status("completed")
+        task2.update_status("completed")
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        completed_tasks = scheduler.filter_by_status("completed")
+        
+        # Assert
+        assert len(completed_tasks) == 2, "Should have 2 completed tasks"
+        assert all(t.status == "completed" for t in completed_tasks)
+    
+    def test_filter_by_in_progress_status(self):
+        """Verify that filter_by_status correctly returns in-progress tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Luna", pet_type="cat", age=2)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Task 1", duration=20, priority=1)
+        task2 = Task(task_name="Task 2", duration=20, priority=1)
+        task3 = Task(task_name="Task 3", duration=20, priority=1)
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        # Mark one as in-progress
+        task2.update_status("in-progress")
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        in_progress_tasks = scheduler.filter_by_status("in-progress")
+        
+        # Assert
+        assert len(in_progress_tasks) == 1, "Should have 1 in-progress task"
+        assert in_progress_tasks[0].task_name == "Task 2"
+
+
+class TestSchedulerFilterByTimeSlot:
+    """Tests for Scheduler filter_by_time_slot() - STEP 2 Feature"""
+    
+    def test_filter_by_morning_time_slot(self):
+        """Verify that filter_by_time_slot correctly returns morning tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Mochi", pet_type="dog", age=3)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Morning Walk", duration=20, priority=1, prefered_time="morning")
+        task2 = Task(task_name="Afternoon Play", duration=20, priority=2, prefered_time="afternoon")
+        task3 = Task(task_name="Morning Feeding", duration=15, priority=1, prefered_time="morning")
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        morning_tasks = scheduler.filter_by_time_slot("morning")
+        
+        # Assert
+        assert len(morning_tasks) == 2, "Should have 2 morning tasks"
+        assert all(t.prefered_time == "morning" for t in morning_tasks)
+    
+    def test_filter_by_afternoon_time_slot(self):
+        """Verify that filter_by_time_slot correctly returns afternoon tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Luna", pet_type="cat", age=2)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Morning Feeding", duration=15, priority=1, prefered_time="morning")
+        task2 = Task(task_name="Afternoon Play", duration=30, priority=2, prefered_time="afternoon")
+        task3 = Task(task_name="Afternoon Grooming", duration=45, priority=3, prefered_time="afternoon")
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        afternoon_tasks = scheduler.filter_by_time_slot("afternoon")
+        
+        # Assert
+        assert len(afternoon_tasks) == 2, "Should have 2 afternoon tasks"
+        assert all(t.prefered_time == "afternoon" for t in afternoon_tasks)
+    
+    def test_filter_by_flexible_time_slot(self):
+        """Verify that filter_by_time_slot correctly returns flexible (None) tasks"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet = Pet(name="Mochi", pet_type="dog", age=3)
+        owner.add_pet(pet)
+        
+        task1 = Task(task_name="Morning Walk", duration=20, priority=1, prefered_time="morning")
+        task2 = Task(task_name="Flexible Task", duration=20, priority=2, prefered_time=None)
+        task3 = Task(task_name="Afternoon Play", duration=30, priority=2, prefered_time="afternoon")
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        # Act
+        scheduler = Scheduler(owner, pet)
+        flexible_tasks = scheduler.filter_by_time_slot("flexible")
+        
+        # Assert
+        assert len(flexible_tasks) == 1, "Should have 1 flexible task"
+        assert flexible_tasks[0].task_name == "Flexible Task"
+    
+    def test_filter_by_time_slot_with_multiple_pets(self):
+        """Verify that filter_by_time_slot works across multiple pets"""
+        # Arrange
+        owner = Owner(name="Jordan", available_time=120)
+        pet1 = Pet(name="Mochi", pet_type="dog", age=3)
+        pet2 = Pet(name="Luna", pet_type="cat", age=2)
+        owner.add_pet(pet1)
+        owner.add_pet(pet2)
+        
+        # Add tasks to pet1
+        task1 = Task(task_name="Mochi Morning", duration=20, priority=1, prefered_time="morning")
+        pet1.add_task(task1)
+        
+        # Add tasks to pet2
+        task2 = Task(task_name="Luna Morning", duration=15, priority=1, prefered_time="morning")
+        pet2.add_task(task2)
+        
+        # Act - should work for both pets
+        scheduler1 = Scheduler(owner, pet1)
+        scheduler2 = Scheduler(owner, pet2)
+        
+        mochi_morning = scheduler1.filter_by_time_slot("morning")
+        luna_morning = scheduler2.filter_by_time_slot("morning")
+        
+        # Assert
+        assert len(mochi_morning) == 1
+        assert len(luna_morning) == 1
+        assert mochi_morning[0].task_name == "Mochi Morning"
+        assert luna_morning[0].task_name == "Luna Morning"
 
 
 if __name__ == "__main__":

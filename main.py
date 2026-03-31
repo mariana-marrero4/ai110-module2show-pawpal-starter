@@ -150,6 +150,74 @@ def main():
     print(scheduler_luna.explain_plan())
     print()
     
+    # ===== DEMONSTRATE FILTERING FEATURES =====
+    print("=" * 60)
+    print("🔍 STEP 2: FILTERING FEATURES (Multiple Pets)")
+    print("=" * 60)
+    print()
+    
+    # Note: Mark some tasks as completed first to demonstrate filtering
+    mochi.update_task_status(task1.task_id, "completed")
+    mochi.update_task_status(task2.task_id, "in-progress")
+    
+    # Feature 1: Filter by Status
+    print("1️⃣ FILTER BY STATUS - Showing Mochi's tasks:")
+    scheduler_mochi = Scheduler(owner, mochi)
+    
+    pending = scheduler_mochi.filter_by_status("pending")
+    print(f"   Pending tasks: {len(pending)}")
+    for t in pending:
+        print(f"     • {t.task_name}")
+    
+    in_progress = scheduler_mochi.filter_by_status("in-progress")
+    print(f"   In-Progress tasks: {len(in_progress)}")
+    for t in in_progress:
+        print(f"     • {t.task_name}")
+    
+    completed = scheduler_mochi.filter_by_status("completed")
+    print(f"   Completed tasks: {len(completed)}")
+    for t in completed:
+        print(f"     • {t.task_name}")
+    print()
+    
+    # Feature 2: Filter by Time Slot
+    print("2️⃣ FILTER BY TIME SLOT - Showing all pets' tasks:")
+    
+    print("   MOCHI:")
+    mochi_morning = scheduler_mochi.filter_by_time_slot("morning")
+    print(f"     Morning tasks: {len(mochi_morning)}")
+    for t in mochi_morning:
+        print(f"       • {t.task_name}")
+    
+    mochi_afternoon = scheduler_mochi.filter_by_time_slot("afternoon")
+    print(f"     Afternoon tasks: {len(mochi_afternoon)}")
+    for t in mochi_afternoon:
+        print(f"       • {t.task_name}")
+    
+    mochi_flexible = scheduler_mochi.filter_by_time_slot("flexible")
+    print(f"     Flexible tasks: {len(mochi_flexible)}")
+    for t in mochi_flexible:
+        print(f"       • {t.task_name}")
+    print()
+    
+    print("   LUNA:")
+    scheduler_luna_for_demo = Scheduler(owner, luna)
+    luna_morning = scheduler_luna_for_demo.filter_by_time_slot("morning")
+    print(f"     Morning tasks: {len(luna_morning)}")
+    for t in luna_morning:
+        print(f"       • {t.task_name}")
+    
+    luna_afternoon = scheduler_luna_for_demo.filter_by_time_slot("afternoon")
+    print(f"     Afternoon tasks: {len(luna_afternoon)}")
+    for t in luna_afternoon:
+        print(f"       • {t.task_name}")
+    
+    luna_flexible = scheduler_luna_for_demo.filter_by_time_slot("flexible")
+    print(f"     Flexible tasks: {len(luna_flexible)}")
+    for t in luna_flexible:
+        print(f"       • {t.task_name}")
+    print()
+    
     # Summary
     print("=" * 60)
     print("📊 SUMMARY")

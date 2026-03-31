@@ -41,3 +41,19 @@ pip install -r requirements.txt
 5. Add tests to verify key behaviors.
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
+
+## Smarter Scheduling
+
+PawPal+ includes two algorithmic filtering features that help owners analyze and organize tasks efficiently:
+
+- **`filter_by_status(status)`** - Filters tasks by their current state:
+  - `"pending"` - Tasks not yet started
+  - `"in-progress"` - Tasks currently being worked on
+  - `"completed"` - Finished tasks
+  
+- **`filter_by_time_slot(slot)`** - Filters tasks by preferred time:
+  - `"morning"` - Best done in the morning
+  - `"afternoon"` - Best done in the afternoon
+  - `"flexible"` - No time preference
+
+These features help identify scheduling conflicts and plan around time constraints.
