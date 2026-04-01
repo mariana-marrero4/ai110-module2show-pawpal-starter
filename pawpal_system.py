@@ -343,6 +343,21 @@ class Owner:
         """
         return list(self.pets)
     
+    def remove_pet(self, pet_name: str) -> bool:
+        """Remove a pet by name
+        
+        Args:
+            pet_name (str): Name of the pet to remove
+            
+        Returns:
+            bool: True if pet was removed, False if pet not found
+        """
+        for i, pet in enumerate(self.pets):
+            if pet.name.lower() == pet_name.lower():
+                self.pets.pop(i)
+                return True
+        return False
+    
     def set_availability(self, time: int) -> None:
         """Set available time for pet care
         
